@@ -7,5 +7,6 @@ CREATE TABLE IF NOT EXISTS CARS (
     carid INT AUTO_INCREMENT PRIMARY KEY,
     speed INT NOT NULL,
     routeid INT NOT NULL,
+    directionForward BOOL NOT NULL DEFAULT TRUE,
     FOREIGN KEY (routeid) REFERENCES ROUTES(routeid)
 );
