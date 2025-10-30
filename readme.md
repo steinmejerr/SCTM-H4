@@ -28,8 +28,8 @@ Projektet benytter følgende teknologier og værktøjer:
 
 | Område | Teknologi |
 |--------|------------|
-| Backend | Python /  |
-| Frontend | HTML, CSS, JavaScript |
+| Backend | Python, UKENDT |
+| Frontend | HTML, CSS, UKENDT |
 | Database | MySQL |
 | Dataanalyse | Python (PySpark) |
 | Versionsstyring | GitHub |
