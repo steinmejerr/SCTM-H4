@@ -15,7 +15,7 @@ Formålet med projektet er at udvikle et **system**, der:
 ## 🧠 Funktioner
 - Indsamling af GPS- og hastighedsdata fra køretøjer.
 - Analyse af data for at beregne gennemsnitshastigheder.
-- Dynamisk farvekodning på Google Maps:
+- Dynamisk farvekodning:
   - 🟢 Normal trafik (ingen forsinkelser)
   - 🟡 Langsom trafik
   - 🔴 Kø eller stillestående trafik
