@@ -47,6 +47,15 @@ Igang
 
 ---
 
+## 🔗 Links
+### Cook Book
+https://docs.google.com/document/d/1Aai-S5v-jAj-hYBUIB1ERlDtdQTYCQtcEV_UtATiIdQ/edit?usp=sharing 
+
+### Trello
+https://trello.com/b/2Nuvp2kz 
+
+---
+
 ## 📜 Licens
 Dette projekt er udviklet som en **studieopgave** og må frit anvendes til undervisningsformål.
 
