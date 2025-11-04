@@ -1,0 +1,30 @@
+services:
+  # -------------------------------
+  # Zookeeper service configuration
+  # -------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1       # Use the official Confluent Zookeeper image (version 7.6.1)
+    container_name: zookeeper                    # Name of the container for easier reference
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181                # Port Zookeeper clients use to connect
+      ZOOKEEPER_TICK_TIME: 2000                  # Basic time unit in milliseconds used by Zookeeper
+    ports:
+      - "2181:2181"                              # Expose port 2181 to the host for Zookeeper access
+
+  # ---------------------------
+  # Kafka service configuration
+  # ---------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1           # Use the official Confluent Kafka image (version 7.6.1)
+    container_name: kafka                        # Name of the Kafka container
+    depends_on:
+      - zookeeper                                # Ensure Zookeeper starts before Kafka
+    ports:
+      - "9092:9092"                              # Expose Kafka’s main port to the host
+    environment:
+      KAFKA_BROKER_ID: 1                         # Unique ID for this Kafka broker
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181    # Address for connecting Kafka to Zookeeper
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092  # Kafka listens on all interfaces inside the container
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://10.108.169.54:9092  # The advertised address clients should connect to
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  # Set to 1 for single-broker setup (no replication)
+    restart: unless-stopped                      # Automatically restart unless manually stopped
