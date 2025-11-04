@@ -10,23 +10,18 @@ TOPIC = "traffic-data"
 def weighted_speed():
     """Returner fart baseret på vægtet sandsynlighed."""
     r = random.random()  # 0.0–1.0
-    if r < 0.05:
-        # 5% chance for kø
+    if r < 0.20:
         return random.randint(0, 30)
-    elif r < 0.20:
-        # 15% chance for nedsat fart
-        return random.randint(30, 60)
+    elif r < 0.40:
+        return random.randint(30, 80)
     else:
-        # 80% chance for flydende trafik
-        return random.randint(60, 90)
+        return random.randint(80, 90)
 
 def make_fake_event():
     # vælg mellem rute 1, 2, 3
     route_id = random.choice([1, 2, 3])
     # vægtet hastighed
     speed = weighted_speed()
-    # tilfældig retning (True = fremad)
-    direction_forward = random.choice([True, False])
 
     # MySQL vil gerne have "YYYY-MM-DD HH:MM:SS"
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -34,7 +29,6 @@ def make_fake_event():
     return {
         "speed": speed,
         "routeid": route_id,
-        "directionForward": direction_forward,
         "timestamp": ts
     }
 
