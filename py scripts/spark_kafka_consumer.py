@@ -218,54 +218,53 @@ def write_to_mysql_and_analytics(batch_df, batch_id):
                  )
                  .collect()[0]) # Fetches the aggregated statistic as a row
 
-    def clamp_tinyint(v):
+    def clamp_tinyint(v): # Limited tinyint with the parameter v
         if v is None:
-            return 0
+            return 0 # If the value is None, return 0
         v = int(v)
         return min(v, 90) # The int can max be 90
 
-    average_speed = clamp_tinyint(stats_row["average_speed"])
-    batch_max_speed = clamp_tinyint(stats_row["batch_max_speed"])
-    batch_min_speed = clamp_tinyint(stats_row["batch_min_speed"])
-    batch_vehicles = int(stats_row["batch_vehicles"])
+    average_speed = clamp_tinyint(stats_row["average_speed"]) # Average speed from the batch
+    batch_max_speed = clamp_tinyint(stats_row["batch_max_speed"]) # Maximum speed from the batch
+    batch_min_speed = clamp_tinyint(stats_row["batch_min_speed"]) # Minimum speed from the batch
+    batch_vehicles = int(stats_row["batch_vehicles"]) # Number of vehicles in the batch
 
-    prev = get_last_analytics()
-    previous_total = prev["total_vehicles"]
-    previous_max = prev["max_speed"]
-    previous_min = prev["min_speed"]
-    previous_recent_congestion = prev["recent_congestion"]
+    prev = get_last_analytics() # Calls the function get_last_analytics to get the previous analytics data
+    previous_total = prev["total_vehicles"] # Previous total number of vehicles
+    previous_max = prev["max_speed"] # Previous maximum speed
+    previous_min = prev["min_speed"] # Previous minimum speed
+    previous_recent_congestion = prev["recent_congestion"] # Previous recent congestion time
 
-    total_vehicles = previous_total + batch_vehicles
-    final_max = batch_max_speed if previous_max is None else max(previous_max, batch_max_speed)
-    final_min = batch_min_speed if previous_min is None else min(previous_min, batch_min_speed)
+    total_vehicles = previous_total + batch_vehicles # Total number of vehicles
+    final_max = batch_max_speed if previous_max is None else max(previous_max, batch_max_speed) # Final maximum speed
+    final_min = batch_min_speed if previous_min is None else min(previous_min, batch_min_speed) # Final minimum speed
 
-    # mest trafikerede rute
     routes_count_df = (cars_df
-                       .groupBy("routeid")
-                       .count()
-                       .orderBy(col("count").desc()))
-    routes = routes_count_df.collect()
+                       .groupBy("routeid") # Groups all the routes by routeid
+                       .count() # Counts how many was on each route
+                       .orderBy(col("count").desc())) # Orders it by count, descending
+    routes = routes_count_df.collect() # Collects all the rows into a list
     if routes:
-        top_route_id = int(routes[0]["routeid"])
-        recent_accident_prone_road = ROUTE_NAMES.get(top_route_id, f"Route {top_route_id}")
+        top_route_id = int(routes[0]["routeid"]) # Gets the routeid of the route with the most vehicles
+        recent_accident_prone_road = ROUTE_NAMES.get(top_route_id, f"Route {top_route_id}") # Gets the name of the route with the most vehicles
     else:
         recent_accident_prone_road = "Ukendt"
 
-    # ---------- Dansk tid ----------
-    dk_tz = pytz.timezone("Europe/Copenhagen")
-    now_dk = datetime.now(dk_tz)
-    now_dk_str = now_dk.strftime("%Y-%m-%d %H:%M:%S")
+    # ---------- Danish time ----------
+    dk_tz = pytz.timezone("Europe/Copenhagen") # Creates a timezone object for Copenhagen, Denmark
+    now_dk = datetime.now(dk_tz) # Fetches the current time, but in the Copenhagen, Denmark timezone
+    now_dk_str = now_dk.strftime("%Y-%m-%d %H:%M:%S") # Converts the time to a string in the format "YYYY-MM-DD HH:MM:SS"
 
     if average_speed <= 60:
-        recent_congestion_val = now_dk_str
+        recent_congestion_val = now_dk_str # If the average speed is 60 or below, it sets recent_congestion_val to the current time
     else:
-        if previous_recent_congestion is not None:
-            recent_congestion_val = previous_recent_congestion.strftime("%Y-%m-%d %H:%M:%S")
+        if previous_recent_congestion is not None: # If there was a previous recent congestion time
+            recent_congestion_val = previous_recent_congestion.strftime("%Y-%m-%d %H:%M:%S") # Keep the previous recent congestion time
         else:
-            recent_congestion_val = now_dk_str
+            recent_congestion_val = now_dk_str # If there was no previous recent congestion time, it sets recent_congestion_val to the current time
 
-    # skriv analytics til DB
     result_df = spark.createDataFrame(
+        # Contains all the calculated analytics data
         [
             (
                 recent_congestion_val,
@@ -276,6 +275,7 @@ def write_to_mysql_and_analytics(batch_df, batch_id):
                 recent_accident_prone_road
             )
         ],
+        # Tells spark which columns we have, and their data types
         schema="""
             recent_congestion STRING,
             average_speed INT,
@@ -294,14 +294,14 @@ def write_to_mysql_and_analytics(batch_df, batch_id):
         .option("user", MYSQL_USER)
         .option("password", MYSQL_PASS)
         .option("driver", "com.mysql.cj.jdbc.Driver")
-        .mode("append")
-        .save()
+        .mode("append") # Adds rows to the existing table
+        .save() # Saves the data to the database
     )
 
-    # ryd cars
-    truncate_cars()
+    truncate_cars() # Calls the function truncate_cars to empty the "cars" table
 
-    # ---------- NYT: send analytics til MQTT ----------
+    # ---------- Sends analytics to MQTT ----------
+    # Creates a dictionary with the analytics data to send to MQTT
     analysis_msg = {
         "recent_congestion": recent_congestion_val,
         "average_speed": int(average_speed),
@@ -312,8 +312,9 @@ def write_to_mysql_and_analytics(batch_df, batch_id):
         "status": congestion_text,
         "ts": now_dk_str
     }
-    mqtt_publish(MQTT_TOPIC_ANALYSIS, analysis_msg)
+    mqtt_publish(MQTT_TOPIC_ANALYSIS, analysis_msg) # Calls the function mqtt_publish to send the analytics data to MQTT
 
+    # Prints the analytics data to the terminal, that just was send to MQTT and saved
     print(
         f"[consumer] batch {batch_id} saved. "
         f"batch_vehicles={batch_vehicles} total_vehicles={total_vehicles} "
@@ -323,39 +324,41 @@ def write_to_mysql_and_analytics(batch_df, batch_id):
 
 # ---------- CUSTOM OUTPUT FUNKTION (1 sek) ----------
 
+# Defines a function to execute for each batch of data
 def print_speed_and_route(batch_df, batch_id):
+    # If the batch DataFrame is empty, return nothing and stop
     if batch_df.rdd.isEmpty():
         return
-    rows = batch_df.select("speed", "routeid", "timestamp").collect()
-    for r in rows:
-        route_name = ROUTE_NAMES.get(r["routeid"], f"Ukendt ({r['routeid']})")
-        print(f"[consumer] speed={r['speed']} route={route_name}")
+    rows = batch_df.select("speed", "routeid", "timestamp").collect() # Fetches all the rows from Spark to Python, and creates a list with the values
+    for r in rows: # Go through each row in the list
+        route_name = ROUTE_NAMES.get(r["routeid"], f"Ukendt ({r['routeid']})") # Gets the name of the route based on routeid
+        print(f"[consumer] speed={r['speed']} route={route_name}") # Prints the speed and route name to the terminal
 
-        # ---------- NYT: send live til MQTT ----------
+        # ---------- Send live to MQTT ----------
         live_msg = {
             "speed": int(r["speed"]),
             "routeid": int(r["routeid"]),
             "road": route_name,
             "timestamp": r["timestamp"].strftime("%Y-%m-%d %H:%M:%S") if r["timestamp"] else None
         }
-        mqtt_publish(MQTT_TOPIC_LIVE, live_msg)
+        mqtt_publish(MQTT_TOPIC_LIVE, live_msg) # Calls the function mqtt_publish to send the live data to MQTT
 
 # ---------- STREAMS ----------
 
-query = (clean_df
+query = (clean_df # The stramed Dataframe
          .writeStream
-         .outputMode("append")
-         .foreachBatch(write_to_mysql_and_analytics)
-         .trigger(processingTime="5 seconds")
-         .start())
+         .outputMode("append") # Adds new rows to the existing table
+         .foreachBatch(write_to_mysql_and_analytics) # Calls the function write_to_mysql_and_analytics for each batch of data
+         .trigger(processingTime="5 seconds") # Processes a new batch every 5 seconds
+         .start()) # Starts the streaming query
 
 query_print = (clean_df
                .writeStream
-               .outputMode("append")
-               .foreachBatch(print_speed_and_route)
-               .trigger(processingTime="1 second")
-               .start())
+               .outputMode("append") # Adds new rows to the existing table
+               .foreachBatch(print_speed_and_route) # Calls the function print_speed_and_route for each batch of data
+               .trigger(processingTime="1 second") # Processes a new batch every second
+               .start()) # Starts the streaming query
 
-print("[consumer] streaming ... Ctrl+C for stop")
+print("[consumer] streaming ... Ctrl+C for stop") # Prints to the terminal that the streaming has started
 
-spark.streams.awaitAnyTermination()
+spark.streams.awaitAnyTermination() # Waits for any of the streaming queries to terminate

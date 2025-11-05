@@ -2,29 +2,29 @@ services:
   # -------------------------------
   # Zookeeper service configuration
   # -------------------------------
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.1      
-    container_name: zookeeper                    
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181                
-      ZOOKEEPER_TICK_TIME: 2000                  
+  zookeeper: # The name of the docker-compose service
+    image: confluentinc/cp-zookeeper:7.6.1 # The Docker image to use for Zookeeper      
+    container_name: zookeeper # The name of the container                    
+    environment: # Environment variables for Zookeeper
+      ZOOKEEPER_CLIENT_PORT: 2181                  
+      ZOOKEEPER_TICK_TIME: 2000 # Tick time for Zookeeper                  
     ports:
-      - "2181:2181"                              
+      - "2181:2181" # Maps port 2181 of the container to port 2181 on the host                              
 
   # ---------------------------
   # Kafka service configuration
   # ---------------------------
-  kafka:
-    image: confluentinc/cp-kafka:7.6.1          
-    container_name: kafka                       
-    depends_on:
-      - zookeeper                                
+  kafka: # The name of the docker-compose service
+    image: confluentinc/cp-kafka:7.6.1 # The Docker image to use for Kafka      
+    container_name: kafka # The name of the container                       
+    depends_on: 
+      - zookeeper # Ensures Zookeeper starts before Kafka                                
     ports:
-      - "9092:9092"                              
+      - "9092:9092" # Maps port 9092 of the container to port 9092 on the host                              
     environment:
-      KAFKA_BROKER_ID: 1                         
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181    
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092  
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://10.108.169.54:9092 
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  
-    restart: unless-stopped                      
+      KAFKA_BROKER_ID: 1 # Unique ID for the Kafka broker                         
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181 # Connects Kafka to Zookeeper    
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092 # Listens on all interfaces on port 9092  
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://10.108.169.54:9092 # Advertises the broker's address to clients 
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # Replication factor for internal topics  
+    restart: unless-stopped # Restarts the container unless it is explicitly stopped                      
