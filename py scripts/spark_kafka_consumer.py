@@ -1,39 +1,47 @@
-import sys
-import json
-import mysql.connector
-from datetime import datetime
-import pytz  # bruges kun til dansk tid
+import sys # Imports sys, to work with system-specific parameters and functions
+import json # Imports JSON, to work with JSON data
+import mysql.connector # Imports mysql.connector, to connect to MySQL database
+from datetime import datetime # Imports datetime, to work with date and time
+import pytz # Imports pytz, to work with time zones
 
-import paho.mqtt.client as mqtt  # <-- NYT
+import paho.mqtt.client as mqtt # Imports paho-mqtt from the library, and give it the alias mqtt
 
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession # Imports the class SparkSession, from the pyspark.sql to create a Spark session
+# 
 from pyspark.sql.functions import (
-    col, from_json, to_timestamp,
-    avg as _avg, max as _max, min as _min, count as _count
+    col, # Refers to a column in a DataFrame
+    from_json, # Converts text in JSON format to a structured column 
+    to_timestamp, # Converts a string column to a timestamp column
+    avg as _avg, # Calculates the average of a column
+    max as _max, # Calculates the maximum value of a column
+    min as _min, # Calculates the minimum value of a column
+    count as _count # Counts the number of rows in a column
 )
 from pyspark.sql.types import (
-    StructType, StructField, IntegerType, StringType
+    StructType, # Represents the entire schema of a DataFrame
+    StructField, # Defines a column in the schema
+    IntegerType, # Tells Spark that the data type is integer
+    StringType # Tells Spark that the data type is string
 )
 
 # -------------------------------------------------
 # MQTT indstillinger
 # -------------------------------------------------
-MQTT_HOST = "10.108.169.80"
-MQTT_PORT = 1883
-MQTT_TOPIC_LIVE = "traffic/live"
-MQTT_TOPIC_ANALYSIS = "traffic/analysis"
+MQTT_HOST = "10.108.169.80" # MQTT BROKER IP (Linux VM)
+MQTT_PORT = 1883 
+MQTT_TOPIC_LIVE = "traffic/live" # MQTT topic for live data
+MQTT_TOPIC_ANALYSIS = "traffic/analysis" # MQTT topic for analytics data
 
 
-def mqtt_publish(topic, payload_dict):
+def mqtt_publish(topic, payload_dict): # MQTT Topic and dictionary with data to send
     """Lille helper: åben, send, luk. Simpelt og robust for små batches."""
     try:
-        client = mqtt.Client("spark-publisher")
-        client.connect(MQTT_HOST, MQTT_PORT, 60)
-        client.publish(topic, json.dumps(payload_dict))
-        client.disconnect()
+        client = mqtt.Client("spark-publisher") # Creates a new MQTT client with the name "spark-publisher"
+        client.connect(MQTT_HOST, MQTT_PORT, 60) # Connects the client to the MQTT BROKER
+        client.publish(topic, json.dumps(payload_dict)) # Sending data to a topic and converts it to JSON string 
+        client.disconnect() # Stop the connection to the MQTT BROKER
     except Exception as e:
-        # vi vil ikke vælte et helt Spark-batch fordi MQTT fejler
-        print(f"[MQTT] fejl ved publish til {topic}: {e}")
+        print(f"[MQTT] fejl ved publish til {topic}: {e}") # Catches any error and prints it, instead of crashing the program
 
 
 # -------------------------------------------------
@@ -43,10 +51,13 @@ BROKER = "10.108.169.54:9092"  # BROKERS IP
 TOPIC = "traffic-data"         # DOCKER TOPIC
 
 # JSON data that comes from the producer
-schema = StructType([
+schema = StructType([ 
     StructField("speed", IntegerType(), True),
     StructField("routeid", IntegerType(), True),
-    StructField("timestamp", StringType(), True),
+    StructField("timestamp", StringType(), True), 
+    # IntegerType means the data type is integer
+    # StringType means the data type is string
+    # True means it can be null
 ])
 
 # MySQL connection info
@@ -54,7 +65,7 @@ MYSQL_HOST = "cpanel.teamzp.net"
 MYSQL_DB = "rebootrp_sctm"
 MYSQL_USER = "rebootrp_sctmuser"
 MYSQL_PASS = "0P)^F*L5--!9N-s%"
-MYSQL_URL = f"jdbc:mysql://{MYSQL_HOST}:3306/{MYSQL_DB}"
+MYSQL_URL = f"jdbc:mysql://{MYSQL_HOST}:3306/{MYSQL_DB}" # Connection URL for MySQL database
 CARS_TABLE = "cars"
 ANALYTIC_TABLE = "analytic_results"
 
@@ -66,69 +77,68 @@ ROUTE_NAMES = {
 }
 
 # ---------- Spark session ----------
+# Build a Spark Sesion, and gives it the name "KafkaToMySQLAnalytics"
 spark = (
     SparkSession.builder
     .appName("KafkaToMySQLAnalytics")
-    .getOrCreate()
+    .getOrCreate() # Uses existing Spark session or creates a new one
 )
-spark.sparkContext.setLogLevel("WARN")
+spark.sparkContext.setLogLevel("WARN") # Changes Sparks log level to WARN, to reduce the amount of log messages
 
 # ---------- læs fra Kafka ----------
-raw_df = (spark.readStream
-          .format("kafka")
-          .option("kafka.bootstrap.servers", BROKER)
-          .option("subscribe", TOPIC)
-          .option("startingOffsets", "latest")
-          .load())
+raw_df = (spark.readStream # Reads streaming data
+          .format("kafka") # Specifies the format as Kafka
+          .option("kafka.bootstrap.servers", BROKER) # Sets the Kafka broker server address
+          .option("subscribe", TOPIC) # Subscribes to the specified Kafka topic
+          .option("startingOffsets", "latest") # Starts reading from the latest messages
+          .load()) # Loads the streaming data into a DataFrame
 
-json_df = raw_df.selectExpr("CAST(value AS STRING) AS json_str")
+json_df = raw_df.selectExpr("CAST(value AS STRING) AS json_str") # Converts a Kafka value to a string and calls it "json_str"
 
 parsed_df = (json_df
-             .select(from_json(col("json_str"), schema).alias("data"))
-             .select("data.*"))
+             .select(from_json(col("json_str"), schema).alias("data")) # Parses the JSON string using the defined schema, and calls the result "data"
+             .select("data.*")) # Select all columns from "data"
 
 clean_df = (
     parsed_df
-    .withColumn("timestamp", to_timestamp("timestamp", "yyyy-MM-dd HH:mm:ss"))
-    .na.drop(subset=["speed", "routeid", "timestamp"])
+    .withColumn("timestamp", to_timestamp("timestamp", "yyyy-MM-dd HH:mm:ss")) # Converts the "timestamp" column from string to timestamp format
+    .na.drop(subset=["speed", "routeid", "timestamp"]) # Drops rows with null values in the specified columns
 )
 
 # ---------- MYSQL HELP FUNCTIONS ----------
 
 def truncate_cars():
+    # Connects to MySQL database
     conn = mysql.connector.connect(
         host=MYSQL_HOST,
         database=MYSQL_DB,
         user=MYSQL_USER,
         password=MYSQL_PASS,
     )
-    cur = conn.cursor()
-    cur.execute("TRUNCATE TABLE cars;")
-    conn.commit()
-    cur.close()
-    conn.close()
+    cur = conn.cursor() # Creates a cursor object to execute SQL queries
+    cur.execute("TRUNCATE TABLE cars;") # Executes the SQL query to truncate the "cars" table
+    conn.commit() # Commits the changes permanent to the database
+    cur.close() # Closes the cursor object
+    conn.close() # Closes the connection to the database
 
 def get_last_analytics():
-    """
-    Henter sidste række fra analytic_results, så vi kan genbruge recent_congestion
-    når avg_speed > 60
-    """
+    # Connect to the MySQL Database
     conn = mysql.connector.connect(
         host=MYSQL_HOST,
         database=MYSQL_DB,
         user=MYSQL_USER,
         password=MYSQL_PASS,
     )
-    cur = conn.cursor()
+    cur = conn.cursor() # Creates a cursor object to execute SQL queries
     cur.execute("""
         SELECT total_vehicles, max_speed, min_speed, recent_congestion
         FROM analytic_results
         ORDER BY resultid DESC
         LIMIT 1;
     """)
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    row = cur.fetchone() # Fetches a row from the restult set, and stores it in the variable row
+    cur.close() # Closes the cursor object
+    conn.close() # Closes the connection to the database
     if row is None:
         return {
             "total_vehicles": 0,
@@ -136,20 +146,21 @@ def get_last_analytics():
             "min_speed": None,
             "recent_congestion": None,
         }
-    return {
+    return { # Returns a dictionary with the last analytics data
         "total_vehicles": int(row[0]),
         "max_speed": None if row[1] is None else int(row[1]),
         "min_speed": None if row[2] is None else int(row[2]),
-        "recent_congestion": row[3],  # datetime-objekt
+        "recent_congestion": row[3],  # datetime-object
     }
 
-# ---------- FOREACHBATCH FUNCTION (5 sek) ----------
+# ---------- FOREACHBATCH FUNCTION (5 SEC) ----------
 
 def write_to_mysql_and_analytics(batch_df, batch_id):
+    # If the batch DataFrame is empty, return nothing and stop
     if batch_df.rdd.isEmpty():
         return
 
-    # 1) skriv batch til cars
+    # Writes the new batch data to MySQL "cars" table
     (batch_df
         .select(
             col("speed").cast("int"),
@@ -163,11 +174,10 @@ def write_to_mysql_and_analytics(batch_df, batch_id):
         .option("user", MYSQL_USER)
         .option("password", MYSQL_PASS)
         .option("driver", "com.mysql.cj.jdbc.Driver")
-        .mode("append")
-        .save()
+        .mode("append") # Adds rows to the existing table
+        .save() # Saves the data to the database
     )
 
-    # 2) læs hele cars for at lave analytics på DENNE batch
     cars_df = (spark.read
                .format("jdbc")
                .option("url", MYSQL_URL)
@@ -175,28 +185,29 @@ def write_to_mysql_and_analytics(batch_df, batch_id):
                .option("user", MYSQL_USER)
                .option("password", MYSQL_PASS)
                .option("driver", "com.mysql.cj.jdbc.Driver")
-               .load())
+               .load()) # Reads the entire "cars" table from the database into a DataFrame
 
+    # If the batch DataFrame is empty, return nothing and stop
     if cars_df.rdd.isEmpty():
         return
-
-    # seneste 5
+    # 5 newest cars
     last5_df = (cars_df
-                .orderBy(col("timestamp").desc())
-                .limit(5))
-    last5_rows = last5_df.collect()
-    speeds_last5 = [r["speed"] for r in last5_rows if r["speed"] is not None]
+                .orderBy(col("timestamp").desc()) # Sorts it be timestamp
+                .limit(5)) # Limit it to 5
+    last5_rows = last5_df.collect() # Creates a list in python with the 5 newest rows
+    speeds_last5 = [r["speed"] for r in last5_rows if r["speed"] is not None] # Creates a list with the speeds of the 5 newest cars
+    # If there are no speeds, return nothing and stop
     if not speeds_last5:
         return
 
-    avg_last5 = int(sum(speeds_last5) / len(speeds_last5))
+    avg_last5 = int(sum(speeds_last5) / len(speeds_last5)) # Calculates the average speed of the 5 newest cars
 
     if 0 <= avg_last5 < 30:
-        congestion_text = "Kø"
+        congestion_text = "Kø" # If the speed is 30 or below, it prints "Kø" in terminal
     elif 30 <= avg_last5 <= 50:
-        congestion_text = "Nedsat fart"
+        congestion_text = "Nedsat fart" # If the speed is 30-50, it prints "Nedsat fart" in terminal
     else:
-        congestion_text = "Flydende trafik"
+        congestion_text = "Flydende trafik" # If the speed is above 50, it prints "Flydende trafik" in terminal
 
     stats_row = (cars_df
                  .agg(
@@ -205,13 +216,13 @@ def write_to_mysql_and_analytics(batch_df, batch_id):
                      _min("speed").alias("batch_min_speed"),
                      _count("*").alias("batch_vehicles")
                  )
-                 .collect()[0])
+                 .collect()[0]) # Fetches the aggregated statistic as a row
 
     def clamp_tinyint(v):
         if v is None:
             return 0
         v = int(v)
-        return min(v, 90)
+        return min(v, 90) # The int can max be 90
 
     average_speed = clamp_tinyint(stats_row["average_speed"])
     batch_max_speed = clamp_tinyint(stats_row["batch_max_speed"])
